@@ -87,7 +87,7 @@
                     x:          Q.width / 2,
                 },
                 0.8,
-                Q.Easing.In);
+                Q.Easing.Linear);
             }
         }
 
@@ -98,7 +98,7 @@
                     x:          WHEEL_END_X,
                 },
                 0.8,
-                Q.Easing.Out,
+                Q.Easing.Linear,
                 {
                     callback: function() {
                         nextStage();
@@ -175,7 +175,14 @@
 
         var STAGE_ARROW_NOT_FOLLOW = "STAGE_ARROW_NOT_FOLLOW";
 
-        var stages = new Array(STAGE_ARROW_NOT_FOLLOW);
+        var STAGE_ROCKET_BREAKOUT = "STAGE_ROCKET_BREAKOUT";
+        var ROCKET_X = 100;
+        var ROCKET_START_Y = 100;
+        var ROCKET_END_Y = 380; 
+        var ROCKET_VX = 1500;
+        var rocket = null;
+
+        var stages = new Array(STAGE_ROCKET_BREAKOUT);
         var backgrounds = new Array("Background_White.png");
 
         var STAGE_BACKGROUND = "STAGE_BACKGROUND";
@@ -262,23 +269,23 @@
                     asset:  "Bar.png"
                 });
                 this.add("2d, platformerControls");
-                this.on("bump.left", function(collusion) {
-                    var p = collusion.obj.p;
+                this.on("bump.left", function(collision) {
+                    var p = collision.obj.p;
                     p.vx = -ballVx;
                     p.x -= 5;
                 });
-                this.on("bump.right", function(collusion) {
-                    var p = collusion.obj.p;
+                this.on("bump.right", function(collision) {
+                    var p = collision.obj.p;
                     p.vx = ballVx;
                     p.x += 5;
                 });
-                this.on("bump.top", function(collusion) {
-                    var p = collusion.obj.p;
+                this.on("bump.top", function(collision) {
+                    var p = collision.obj.p;
                     p.vy = -ballVy;
                     p.y -= 5;
                 });
-                this.on("bump.bottom", function(collusion) {
-                    var p = collusion.obj.p;
+                this.on("bump.bottom", function(collision) {
+                    var p = collision.obj.p;
                     p.vy = ballVy;
                     p.y += 5;
                 });
@@ -496,11 +503,111 @@
             1,
             {
                 delay:      3
-
             });
 
             heartFlag = true;
-        })
+        });
+
+        Q.scene(STAGE_ROCKET_BREAKOUT, function(stage) {
+            explode = stage.insert(new Q.Sprite({
+                x:          -500,
+                y:          -500,
+                asset:      "Explode.png",
+                opacity:    0
+            }));
+
+            var up = stage.insert(new Q.Sprite({
+                x:          550,
+                y:          100 - 1,
+                asset:      "Easy_Wall.png"
+            }));
+            up.on("hit", function(collision) {
+                explode.p.opacity = 1;
+                explode.p.x = collision.obj.p.x;
+                explode.p.y = collision.obj.p.y;
+                setTimeout(function() {
+                    explode.destroy();
+                }, 
+                TIME_FULL - progressBarTimeLeft > 1 ? 1000 : (TIME_FULL - progressBarTimeLeft) * 1000 - 1);
+                collision.obj.stop();
+                collision.obj.destroy();
+            }); 
+            
+            var middle = stage.insert(new Q.Sprite({
+                x:          1000,
+                y:          240,
+                opacity:    0,
+                asset:      "Easy_Wall.png"
+            }));
+            middle.on("hit", function(collision) {
+                heartFlag = true;
+            });
+
+            var down = stage.insert(new Q.Sprite({
+                x:          550,
+                y:          380 + 1,
+                asset:      "Easy_Wall.png"
+            }));
+            down.on("hit", function(collision) {
+                explode.p.opacity = 1;
+                explode.p.x = collision.obj.p.x;
+                explode.p.y = collision.obj.p.y;
+                setTimeout(function() {
+                    explode.destroy();
+                }, 
+                TIME_FULL - progressBarTimeLeft > 1 ? 1000 : (TIME_FULL - progressBarTimeLeft) * 1000);
+                collision.obj.stop();
+                collision.obj.destroy();
+            });
+
+            rocket = stage.insert(new Q.Sprite({
+                x:          ROCKET_X,
+                y:          ROCKET_START_Y,
+                gravityY:   0,
+                asset:      "Rocket.png"
+            }));
+            rocket.add("tween, 2d");
+            rocket.step = function(dt) {
+                if (Q.inputs["fire"]) {
+                    this.stop();
+                    this.p.vx = ROCKET_VX;
+                }
+            };
+            rocket.animate({
+                y:          ROCKET_END_Y
+            },
+            1,
+            Q.Easing.Quadratic.InOut,
+            {
+                delay:      0
+            });
+            rocket.animate({
+                y:          ROCKET_START_Y
+            },
+            1,
+            Q.Easing.Quadratic.InOut,
+            {
+                delay:      1
+            });
+            rocket.animate({
+                y:          ROCKET_END_Y
+            },
+            1,
+            Q.Easing.Quadratic.InOut,
+            {
+                delay:      2
+            });
+            rocket.animate({
+                y:          ROCKET_START_Y
+            },
+            1,
+            Q.Easing.Quadratic.InOut,
+            {
+                delay:      3
+            });
+
+            heartFlag = false;
+        });
 
         Q.scene(STAGE_UI, function(stage) {
             var box = stage.insert(new Q.UI.Container({
@@ -522,7 +629,7 @@
             scoreText.step = function(dt) {
                 if (scoreCurrent < scoreTarget) {
                     delta = scoreTarget - scoreCurrent;
-                    toBeIncreased = delta <= 1 ? delta : delta * dt * 0.8;
+                    toBeIncreased = delta <= 1 ? delta : delta * dt * 0.85;
                     scoreCurrent += toBeIncreased;
                     if (scoreCurrent > scoreTarget) {
                         scoreCurrent = scoreTarget;
@@ -675,7 +782,9 @@
             Space_Empty.png,\
             Space_Full.png,\
             Forbid.png,\
-            Rocket.png", function() {
+            Rocket.png,\
+            Easy_Wall.png,\
+            Explode.png", function() {
                 Q.stageScene(STAGE_BACKGROUND);
                 Q.stageScene(STAGE_MAIN, 1);
                 //Q.debug = true;
