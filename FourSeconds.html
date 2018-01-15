@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <script src='QuintusLib.js'></script>
+
+    <script>
+        function clampX(p) {
+            if (p.x <= p.w / 2) {
+                p.x = p.w / 2 + 5;
+                if (p.vx) {
+                    p.vx *= -1;
+                }
+            } else if (p.x >= Q.width - p.w / 2) {
+                p.x = Q.width - p.w / 2 - 5;
+                if (p.vx) {
+                    p.vx *= -1;
+                }
+            }
+        }
+
+        function clampY(p) {
+            if (p.y <= p.h / 2) {
+                heartFlag = false;
+            } else if (p.y >= Q.height - p.h / 2) {
+                p.y = Q.height - p.h / 2 - 5;
+                if (p.vy) {
+                    p.vy *= -1;
+                }
+            }
+        }
+
+        function appendScore(delta) {
+            scoreTarget += delta;
+        }
+
+        function destroyOneHeart() {
+            if (lifeLeft <= 0) 
+            {
+                return false;
+            }
+
+            hearts[--lifeLeft].destroy();
+            return true;
+        }
+
+        function resetGame() {
+            Q.clearStages();
+            uiStaged = false;
+            isProgressBarActive = false;
+            progressBarTimeLeft = 0;
+            isWheelActive = false;
+            lifeLeft = MAX_HEART;
+            Q.stageScene(STAGE_BACKGROUND);
+            Q.stageScene(STAGE_MAIN, 1);
+        }
+
+        function changeBackground(bg) {
+            background.asset(bg);
+        }
+
+        function stageUI() {
+            if (uiStaged == false) {
+                Q.stageScene(STAGE_UI, 2);
+                uiStaged = true;
+            }
+        }
+
+        function nextStage() {
+            var index = Math.floor(Math.random() * stages.length);
+            changeBackground(backgrounds[index]);
+            Q.stageScene(stages[index], 1);
+            resetProgressBarTime();
+            var wheelComponents = new Array(wheel, wheelFill, wheelText);
+            for (var i = 0 ; i < wheelComponents.length ; i++) {
+                wheelComponents[i].p.x = WHEEL_START_X;
+            }
+            wheelFill.p.angle = 0;
+        }
+
+        function WheelAnimIn() {
+            changeBackground(backgrounds[0]);
+            var wheelComponents = new Array(wheel, wheelFill, wheelText);
+            resetWheelTime();
+            for (var i = 0 ; i < wheelComponents.length ; i++){
+                wheelComponents[i].animate({
+                    x:          Q.width / 2,
+                },
+                0.8,
+                Q.Easing.In);
+            }
+        }
+
+        function WheelAnimOut() {
+            var wheelComponents = new Array(wheel, wheelFill, wheelText);
+            for (var i = 0 ; i < wheelComponents.length ; i++){
+                wheelComponents[i].animate({
+                    x:          WHEEL_END_X,
+                },
+                0.8,
+                Q.Easing.Out,
+                {
+                    callback: function() {
+                        nextStage();
+                    }
+                });
+            }
+        }
+
+        function resetProgressBarTime() {
+            isProgressBarActive = true;
+            progressBarTimeLeft = TIME_FULL;
+        }
+
+        function resetWheelTime() {
+            isWheelActive = true;
+            wheelCurrentTime = TIME_FULL;
+        }
+
+        function randomBetween(min, max) {
+            return min + Math.random() * (max - min);
+        }
+
+        function randomNextToFollow() {
+            needToFollow--;
+            nextToFollowIndex = Math.floor(Math.random() * keyIndexs.length);
+            keySprites[nextToFollowIndex].asset(keyFulls[nextToFollowIndex]);
+            for (var i = 0 ; i < keySprites.length ; i++) {
+                if (i == nextToFollowIndex) {
+                    continue;
+                }
+                keySprites[i].asset(keyEmptys[i]);
+            }
+        }
+    </script>
+</head>
+
+<body>
+    <canvas id = 'Main' width = '600' height = '480' style="border:1px solid #000"></canvas>
+
+    <script>
+        var SCORE_PER_MISSION = 100;
+        var SCORE_BONUS_SMALL = 20;
+        var SCORE_BONUS_MEDIUM = 50;
+        var SCORE_BONUS_BIG = 120;
+
+        var keyListener = null;
+
+        var STAGE_BLOCK_BREAKER = "STAGE_BLOCK_BREAKER";
+        var BALL_VX_MIN = 200;
+        var BALL_VX_MAX = 500;
+        var BALL_VY_MIN = 200;
+        var BALL_VY_MAX = 350;
+        var ballVx = 0.0;
+        var ballVy = 0.0;
+
+        var STAGE_ARROW_FOLLOW = "STAGE_ARROW_FOLLOW";
+        var NEED_TO_FOLLOW = 6;
+        var needToFollow;
+        var keyIndexs = new Array("up", "right", "down", "left", "fire")
+        var keyEmptys = new Array(
+            "Arrow_Up_Empty.png",
+            "Arrow_Right_Empty.png",
+            "Arrow_Down_Empty.png",
+            "Arrow_Left_Empty.png",
+            "Space_Empty.png");
+        var keyFulls = new Array(
+            "Arrow_Up_Full.png",
+            "Arrow_Right_Full.png",
+            "Arrow_Down_Full.png",
+            "Arrow_Left_Full.png",
+            "Space_Full.png");
+        var keySprites = new Array(5);
+        var nextToFollowIndex;
+
+        var STAGE_ARROW_NOT_FOLLOW = "STAGE_ARROW_NOT_FOLLOW";
+
+        var stages = new Array(STAGE_ARROW_NOT_FOLLOW);
+        var backgrounds = new Array("Background_White.png");
+
+        var STAGE_BACKGROUND = "STAGE_BACKGROUND";
+        var background = null;
+
+        var STAGE_UI = "UI";
+        var uiStaged = false;
+        var SCORE_STATIC_TEXT_X = 140;
+        var SCORE_STATIC_TEXT_Y = -220;
+        var SCORE_TEXT_X = 230;
+        var SCORE_TEXT_Y = -220;
+        var SCORE_INCREASE_SPEED = 20.0;
+        var scoreText = null;
+        var scoreCurrent = 0.0;
+        var scoreTarget = 0.0;
+        var HEART_START_X = -265;
+        var HEART_START_Y = -220;
+        var HEART_SIZE = 30;
+        var HEART_PADDING = 3;
+        var MAX_HEART = 1;
+        var lifeLeft = MAX_HEART;
+        var hearts = new Array(MAX_HEART);
+        var heartFlag = false;
+        var PROGRESS_BAR_START_X = 0;
+        var PROGRESS_BAR_START_Y = 223;
+        var PROGRESS_BAR_WIDTH = 600;
+        var PROGRESS_BAR_HEIGHT = 30;
+        var isProgressBarActive = false;
+        var TIME_FULL = 4.0;
+        var progressBarTimeLeft = 0;
+
+        var STAGE_MAIN = "STAGE_MAIN";
+        var TITLE_X = -110;
+        var TITLE_Y = -200;
+        var TITLE_CONTENT = "Four Seconds";
+        var TITLE_SIZE = 48;
+        var TITLE_COLOR = "rgba(255, 255, 255, 1)";
+        var EXTRA_X = -35;
+        var EXTRA_Y = -150;
+        var EXTRA_CONTENT = "How much could you do in 4 seconds?";
+        var EXTRA_SIZE = 24;
+        var EXTRA_COLOR = "rgba(255, 255, 255, 1)";
+        var BUTTON_PLAY_X = 170;
+        var BUTTON_PLAY_Y = 210;
+        var WHEEL_START_X = -400;
+        var WHEEL_END_X = 1000;
+        var WHEEL_TEXT_OFFSET_Y = 25;
+        var wheel = null;
+        var wheelFill = null;
+        var wheelText = null;
+        var wheelManager = null;
+        var isWheelActive = false;
+        var wheelCurrentTime = TIME_FULL;
+
+        var Q = Quintus()
+        .include("Sprites, Scenes, Input, 2D, Touch, UI, Anim")
+        .setup('Main')
+        .controls()
+        .touch();
+
+        Q.Sprite.extend("Ball", {
+            init: function(p) {
+                this._super(p, {
+                    w:      50,
+                    h:      50,
+                    asset:  "Ball.png"
+                });
+                this.add('2d');
+            },
+
+            step: function(dt) {
+                var p = this.p;
+                clampX(p);
+                clampY(p);
+            }
+        });
+
+        Q.Sprite.extend("Bar", {
+            init: function(p) {
+                this._super(p, {
+                    w:          100,
+                    h:          20,
+                    gravityY:    0,
+                    asset:  "Bar.png"
+                });
+                this.add("2d, platformerControls");
+                this.on("bump.left", function(collusion) {
+                    var p = collusion.obj.p;
+                    p.vx = -ballVx;
+                    p.x -= 5;
+                });
+                this.on("bump.right", function(collusion) {
+                    var p = collusion.obj.p;
+                    p.vx = ballVx;
+                    p.x += 5;
+                });
+                this.on("bump.top", function(collusion) {
+                    var p = collusion.obj.p;
+                    p.vy = -ballVy;
+                    p.y -= 5;
+                });
+                this.on("bump.bottom", function(collusion) {
+                    var p = collusion.obj.p;
+                    p.vy = ballVy;
+                    p.y += 5;
+                });
+            },
+
+            step: function(dt) {
+                clampX(this.p);
+            }
+        });
+
+        Q.UI.ProgressBar = Q.Sprite.extend("UI.ProgressBar", {
+            init: function(p) {
+                this._super(Q._defaults(p||{}, {
+                    type:           Q.SPRITE_UI,
+                    currentValue:   0.0,
+                    maxValue:       100.0
+                }));
+            },
+
+            updateValue: function(value) {
+                this.p.currentValue = value >= 0 ? value : 0;
+                this.p.cx = (3.0 - 2 * (this.p.currentValue / this.p.maxValue)) * (PROGRESS_BAR_WIDTH / 2);
+            }
+        });
+
+        Q.Sprite.extend("Background", {
+            init: function(p) {
+                this._super(p, {
+                    x:          Q.width / 2,
+                    y:          Q.height / 2,
+                })
+            }
+        })
+
+        Q.Sprite.extend("Wheel", {
+            init: function(p) {
+                this._super(p, {
+                    asset:      "Wheel.png"
+                });
+            }
+        });
+
+        Q.Sprite.extend("WheelFill", {
+            init: function(p) {
+                this._super(p, {
+                    asset:      "Wheel_Fill.png"
+                });
+            }
+        });
+
+        Q.Sprite.extend("WheelManager", {
+            init: function(p) {
+                this._super(p);
+            },
+
+            step: function(dt) {
+                if (isWheelActive == false) {
+                    return;
+                }
+
+                wheelCurrentTime -= dt;
+                if (wheelCurrentTime <= 0) {
+                    wheelCurrentTime = 0;
+                    isWheelActive = false;
+                    WheelAnimOut();
+                }
+                wheelFill.p.angle = (TIME_FULL - wheelCurrentTime) / TIME_FULL * 360;
+                wheelText.p.label = Math.ceil(wheelCurrentTime).toString();
+            }
+        });
+
+        Q.Sprite.extend("KeyListener", {
+            init: function(p) {
+                this._super(p);
+            }
+        });
+
+        Q.scene(STAGE_BLOCK_BREAKER, function(stage) {
+            ballVx = randomBetween(BALL_VX_MIN, BALL_VX_MAX);
+            ballVy = randomBetween(BALL_VY_MIN, BALL_VY_MAX);
+            stage.insert(new Q.Ball({
+                x:          400,
+                y:          400,
+                vx:         ballVx,
+                vy:         ballVy,
+                gravityY:   0,
+            }));
+
+            var bar = stage.insert(new Q.Bar({
+                x:          300,
+                y:          50,
+            }));
+
+            heartFlag = true;
+        });
+
+        Q.scene(STAGE_ARROW_FOLLOW, function(stage) {
+            keySprites[0] = stage.insert(new Q.Sprite({
+                x:          80,
+                y:          200,
+                asset:      "Arrow_Up_Empty.png"
+            }));
+
+            keySprites[1] = stage.insert(new Q.Sprite({
+                x:          230,
+                y:          200,
+                asset:      "Arrow_Right_Empty.png"
+            }));
+
+            keySprites[2] = stage.insert(new Q.Sprite({
+                x:          370,
+                y:          200,
+                asset:      "Arrow_Down_Empty.png"
+            }));
+
+            keySprites[3] = stage.insert(new Q.Sprite({
+                x:          510,
+                y:          200,
+                asset:      "Arrow_Left_Empty.png"
+            }));
+
+            keySprites[4] = stage.insert(new Q.Sprite({
+                x:          300,
+                y:          350,
+                asset:      "Space_Empty.png"
+            }));
+
+            keyListener = stage.insert(new Q.KeyListener());
+            keyListener.step = function(dt) {
+                if (Q.inputs[keyIndexs[nextToFollowIndex]]) {
+                    if (needToFollow == 0) {
+                        heartFlag = true;
+                    } else if (needToFollow < 0) {
+                        appendScore(SCORE_BONUS_SMALL);
+                    }
+                    randomNextToFollow();
+                }
+            };
+
+            heartFlag = false;
+            needToFollow = NEED_TO_FOLLOW;
+            randomNextToFollow();
+        });
+
+        Q.scene(STAGE_ARROW_NOT_FOLLOW, function(stage) {
+            keySprites[0] = stage.insert(new Q.Sprite({
+                x:          80,
+                y:          200,
+                asset:      "Arrow_Up_Full.png"
+            }));
+
+            keySprites[1] = stage.insert(new Q.Sprite({
+                x:          230,
+                y:          200,
+                asset:      "Arrow_Right_Full.png"
+            }));
+
+            keySprites[2] = stage.insert(new Q.Sprite({
+                x:          370,
+                y:          200,
+                asset:      "Arrow_Down_Full.png"
+            }));
+
+            keySprites[3] = stage.insert(new Q.Sprite({
+                x:          510,
+                y:          200,
+                asset:      "Arrow_Left_Full.png"
+            }));
+
+            keySprites[4] = stage.insert(new Q.Sprite({
+                x:          300,
+                y:          350,
+                asset:      "Space_Full.png"
+            }));
+
+            keyListener = stage.insert(new Q.KeyListener());
+            keyListener.step = function(dt) {
+                for (var i = 0 ; i < keyIndexs.length ; i++) {
+                    if (Q.inputs[keyIndexs[i]]) {
+                        heartFlag = false;
+                    }
+                }
+            };
+
+            var forbid = stage.insert(new Q.Sprite({
+                x:          300,
+                y:          240,
+                asset:      "Forbid.png"
+            }))
+            forbid.add("tween");
+            forbid.animate({
+                opacity:    0
+            },
+            1,
+            {
+                delay:      0
+            });
+            forbid.animate({
+                opacity:    1
+            },
+            1,
+            {
+                delay:      1
+            });
+            forbid.animate({
+                opacity:    0
+            },
+            1,
+            {
+                delay:      2
+            });
+            forbid.animate({
+                opacity:    1
+            },
+            1,
+            {
+                delay:      3
+
+            });
+
+            heartFlag = true;
+        })
+
+        Q.scene(STAGE_UI, function(stage) {
+            var box = stage.insert(new Q.UI.Container({
+                x:          Q.width / 2,
+                y:          Q.height / 2,
+            }));
+
+            box.insert(new Q.UI.Text({
+                x:          SCORE_STATIC_TEXT_X,
+                y:          SCORE_STATIC_TEXT_Y,
+                label:      "Score: "
+            }));
+
+            scoreText = box.insert(new Q.UI.Text({
+                x:          SCORE_TEXT_X,
+                y:          SCORE_TEXT_Y,
+                label:      "0"
+            }));
+            scoreText.step = function(dt) {
+                if (scoreCurrent < scoreTarget) {
+                    delta = scoreTarget - scoreCurrent;
+                    toBeIncreased = delta <= 1 ? delta : delta * dt * 0.8;
+                    scoreCurrent += toBeIncreased;
+                    if (scoreCurrent > scoreTarget) {
+                        scoreCurrent = scoreTarget;
+                    }
+                    this.p.label = Math.floor(scoreCurrent).toString();
+                }
+            };
+
+            // var button1 = box.insert(new Q.UI.Button({
+            //     x:          -100,
+            //     y:          0,
+            //     fill:       "#CCCCCC",
+            //     label:      "Add Score"
+            // }));
+            // button1.on("click", function() {
+            //     appendScore(Math.random() * 100);
+            // });
+
+
+            // var button2 = box.insert(new Q.UI.Button({
+            //     x:          100,
+            //     y:          0,
+            //     fill:       "#CCCCCC",
+            //     label:      "Decrease Life"
+            // }));
+            // button2.on("click", function() {
+            //     destroyOneHeart();
+            // });
+            for (var i = 0 ; i < MAX_HEART ; i++) {
+                hearts[i] = box.insert(new Q.UI.Button({
+                    x:          HEART_START_X + (HEART_SIZE + HEART_PADDING) * i,
+                    y:          HEART_START_Y,
+                    asset:      "Heart_Full.png",
+                }));
+            }
+
+            progressBar_Full = box.insert(new Q.UI.ProgressBar({
+                x:          PROGRESS_BAR_START_X,
+                y:          PROGRESS_BAR_START_Y,
+                asset:      "ProgressBar_Full.png",
+            }));
+            progressBar_Full.step = function(dt) {
+                if (isProgressBarActive == false) {
+                    return;
+                }
+
+                progressBarTimeLeft -= dt;
+                if (progressBarTimeLeft <= 0) {
+                    if (heartFlag == true) {
+                        appendScore(SCORE_PER_MISSION);
+                    } else {
+                        if (destroyOneHeart() == false) {
+                            resetGame();
+                            return;
+                        }
+                    }
+                    isProgressBarActive = false;
+                    Q.clearStage(1);
+                    WheelAnimIn();
+                }
+                this.updateValue(progressBarTimeLeft / TIME_FULL * 100);
+            };
+
+            progressBar_Full.updateValue(0);
+
+            wheel = stage.insert(new Q.Wheel({
+                x:          WHEEL_START_X,
+                y:          Q.height / 2,
+            }));
+            wheel.add("tween");
+
+            wheelFill = stage.insert(new Q.WheelFill({
+                x:          WHEEL_START_X,
+                y:          Q.height / 2,
+                angle:      0,
+            }));
+            wheelFill.add("tween");
+
+            wheelText = stage.insert(new Q.UI.Text({
+                x:          WHEEL_START_X,
+                y:          Q.height / 2 + WHEEL_TEXT_OFFSET_Y,
+                label:      TIME_FULL.toString(),
+                size:       180,
+            }));
+            wheelText.add("tween");
+
+            wheelManager = stage.insert(new Q.WheelManager());
+
+            WheelAnimIn();
+        });
+
+        Q.scene(STAGE_MAIN, function(stage) {
+            var box = stage.insert(new Q.UI.Container({
+                x:          Q.width / 2,
+                y:          Q.height / 2,
+            }));
+
+            box.insert(new Q.UI.Text({
+                x:          TITLE_X,
+                y:          TITLE_Y,
+                label:      TITLE_CONTENT,
+                size:       TITLE_SIZE,
+                color:      TITLE_COLOR
+            }));
+
+            box.insert(new Q.UI.Text({
+                x:          EXTRA_X,
+                y:          EXTRA_Y,
+                label:      EXTRA_CONTENT,
+                size:       EXTRA_SIZE,
+                color:      EXTRA_COLOR
+            }));
+
+            var buttonPlay = box.insert(new Q.UI.Button({
+                x:          BUTTON_PLAY_X,
+                y:          BUTTON_PLAY_Y,
+                asset:      "Button_Play.png",
+                label:      "Play"
+            }));
+            buttonPlay.on("click", function() {
+                stageUI();
+                Q.clearStage(1);
+            });
+        });
+
+        Q.scene(STAGE_BACKGROUND, function(stage) {
+            background = stage.insert(new Q.Background({
+                asset:      "Background_Main.jpg"
+            }));
+        })
+
+        Q.load("\
+            Bar.png,\
+            Ball.png,\
+            Heart_Full.png,\
+            ProgressBar_Full.png,\
+            Background_Main.jpg,\
+            Button_Play.png,\
+            Background_White.png,\
+            Wheel.png,\
+            Wheel_Fill.png,\
+            Arrow_Right_Empty.png,\
+            Arrow_Down_Empty.png,\
+            Arrow_Left_Empty.png,\
+            Arrow_Up_Empty.png,\
+            Arrow_Right_Full.png,\
+            Arrow_Down_Full.png,\
+            Arrow_Left_Full.png,\
+            Arrow_Up_Full.png,\
+            Space_Empty.png,\
+            Space_Full.png,\
+            Forbid.png,\
+            Rocket.png", function() {
+                Q.stageScene(STAGE_BACKGROUND);
+                Q.stageScene(STAGE_MAIN, 1);
+                //Q.debug = true;
+                //Q.debugFill = true;
+        });
+    </script>
+</body>
+</html>
