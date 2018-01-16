@@ -68,10 +68,17 @@
         }
 
         function nextStage() {
+            if (typeof(aim) != "undefined") {
+                aim.destroy();
+            }   
             var index = Math.floor(Math.random() * stages.length);
+            if (index == lastStageIndex) {
+                index = (index + 1) % stages.length;
+            }
+            lastStageIndex = index;
             changeBackground(backgrounds[index]);
-            Q.stageScene(stages[index], 1);
             resetProgressBarTime();
+            Q.stageScene(stages[index], 1);
             var wheelComponents = new Array(wheel, wheelFill, wheelText);
             for (var i = 0 ; i < wheelComponents.length ; i++) {
                 wheelComponents[i].p.x = WHEEL_START_X;
@@ -133,6 +140,33 @@
                 keySprites[i].asset(keyEmptys[i]);
             }
         }
+
+        function movingXY(obj, dt) {
+            var vx = 100;
+            var vy = 100;
+            if (obj.p.vx) {
+                vx = obj.p.vx;
+            }
+            if (obj.p.vy) {
+                vy = obj.p.vy;
+            }
+            var distX = 0;
+            var distY = 0;
+            if (Q.inputs["left"]) {
+                distX -= vx * dt;
+            }
+            if (Q.inputs["right"]) {
+                distX += vx * dt;
+            }
+            if (Q.inputs["up"]) {
+                distY -= vy * dt;
+            }
+            if (Q.inputs["down"]) {
+                distY += vy * dt;
+            }
+            obj.p.x += distX;
+            obj.p.y += distY;
+        }
     </script>
 </head>
 
@@ -185,7 +219,33 @@
 
         var STAGE_JUMP_ADVENTURE = "STAGE_JUMP_ADVENTURE";
 
-        var stages = new Array(STAGE_JUMP_ADVENTURE);
+        var STAGE_SHOOT_BALLOONS = "STAGE_SHOOT_BALLOONS";
+        var NEED_TO_SHOOT = 5;
+        var AIM_MOVING_SPEED = 100.0;
+        var GENERATE_BALLOON_INTERVAL_MIN = 0.15;
+        var GENERATE_BALLOON_INTERVAL_MAX = 0.2;
+        var BALLOONS = new Array(
+            "Balloon_Blue.png",
+            "Balloon_Cyan.png",
+            "Balloon_Pink.png",
+            "Balloon_Yellow.png"
+            );
+        var shotCount;
+        var BALLOON_START_Y = 700;
+        var BALLOON_SPEED_Y_MIN = -100;
+        var BALLOON_SPEED_Y_MAX = -600;
+        var BALLOON_SCALE_MIN = 0.8;
+        var BALLOON_SCALE_MAX = 1.5;
+
+        var stages = new Array(
+            STAGE_ARROW_FOLLOW,
+            STAGE_ARROW_NOT_FOLLOW,
+            STAGE_BLOCK_BREAKER,
+            STAGE_JUMP_ADVENTURE,
+            STAGE_ROCKET_BREAKOUT,
+            STAGE_SHOOT_BALLOONS
+            );
+        var lastStageIndex = -1;
         var backgrounds = new Array("Background_White.png");
 
         var STAGE_BACKGROUND = "STAGE_BACKGROUND";
@@ -205,7 +265,7 @@
         var HEART_START_Y = -220;
         var HEART_SIZE = 30;
         var HEART_PADDING = 3;
-        var MAX_HEART = 1;
+        var MAX_HEART = 3;
         var lifeLeft = MAX_HEART;
         var hearts = new Array(MAX_HEART);
         var heartFlag = false;
@@ -683,8 +743,8 @@
                 setTimeout(dt => {
                     var box = stage.insert(new Q.Sprite({
                         x:          tyre.p.x + Q.width + 50,
-                        y:          300,
-                        vx:         -200,
+                        y:          250,
+                        vx:         -100 - 200 * Math.random(),
                         gravityY:   0,
                         sheet:      "Crates",
                         frame:      Math.random() < 0.5 ? 0 : 1,
@@ -698,8 +758,10 @@
                     box.on("hit", function(collision) {
                         heartFlag = false;
                         collision.obj.p.isAlive = false;
-                        collision.obj.p.opacity = 0;
+                        collision.obj.p.y = 2000;
                         collision.obj.p.vx = 0;
+                        this.p.vx = 500;
+                        this.p.vy = -300;
                     });
                 }, i * 1000);
             }
@@ -709,6 +771,57 @@
             stage.add("viewport");
 
             var manager = stage.insert(new Q.SceneManager());
+        });
+
+        Q.scene(STAGE_SHOOT_BALLOONS, function(stage) {
+            shotCount = 0;
+            aim = Q.stage(2).insert(new Q.Sprite({
+                x:              Q.width / 2,
+                y:              Q.height / 2,
+                vx:             600,
+                vy:             600,
+                asset:          "Aim.png",
+            }));
+            setTimeout(() => {
+                aim.destroy();
+            }, (TIME_FULL - 0.5) * 1000);
+            aim.step = function(dt){
+                movingXY(this, dt);
+                if (Q.inputs["fire"]) {
+                    var target = Q.stage(1).locate(this.p.x, this.p.y);
+                    if (target && target.p.asset.match("Balloon_")) {
+                        shotCount++;
+                        if (shotCount >= NEED_TO_SHOOT) {
+                            appendScore(SCORE_BONUS_MEDIUM);
+                            heartFlag = true;
+                        } else {
+                            appendScore(SCORE_BONUS_SMALL);
+                        }
+                        target.destroy();
+                    }
+                }
+            };
+
+            var t = 0.0;
+            while (1) {
+                t += randomBetween(GENERATE_BALLOON_INTERVAL_MIN, GENERATE_BALLOON_INTERVAL_MAX);
+                if (t >= TIME_FULL) {
+                    break;
+                }
+                setTimeout(() => {
+                    var balloon = stage.insert(new Q.Sprite({
+                        asset:          BALLOONS[Math.floor(Math.random() * BALLOONS.length)],
+                        x:              randomBetween(0, 600),
+                        y:              BALLOON_START_Y,
+                        vy:             randomBetween(BALLOON_SPEED_Y_MIN, BALLOON_SPEED_Y_MAX),
+                        gravityY:       0,
+                        scale:          randomBetween(BALLOON_SCALE_MIN, BALLOON_SCALE_MAX),
+                        collisionMask:  Q.SPRITE_NONE
+                    }));
+                    balloon.add("2d");
+                }, t * 1000);
+            }
+            heartFlag = false;
         });
 
         Q.scene(STAGE_UI, function(stage) {
@@ -890,7 +1003,12 @@
             Background_Wall.png,\
             Background_Floor.png,\
             Crates.png,\
-            Tyre.png", function() {
+            Tyre.png,\
+            Balloon_Blue.png,\
+            Balloon_Cyan.png,\
+            Balloon_Pink.png,\
+            Balloon_Yellow.png,\
+            Aim.png", function() {
                 Q.stageScene(STAGE_BACKGROUND);
                 Q.stageScene(STAGE_MAIN, 1);
                 //Q.debug = true;
