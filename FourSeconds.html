@@ -47,6 +47,7 @@
         function resetGame() {
             Q.clearStages();
             scoreCurrent = 0;
+            scoreTarget = 0;
             uiStaged = false;
             isProgressBarActive = false;
             timeLeft = 0;
@@ -76,7 +77,7 @@
                 index = (index + 1) % stages.length;
             }
             lastStageIndex = index;
-            changeBackground(backgrounds[index]);
+            changeBackground(0);
             resetProgressBarTime();
             Q.stageScene(stages[index], 1);
             var wheelComponents = new Array(wheel, wheelFill, wheelText);
@@ -167,6 +168,32 @@
             obj.p.x += distX;
             obj.p.y += distY;
         }
+
+        function isSpaceDown() {
+            var curTime = new Date().getTime();
+            if (curTime - lastClickSpaceTime < clickInterval) {
+                return false;
+            }
+            if (Q.inputs["fire"]) {
+                console.log("asd");
+                lastClickSpaceTime = curTime;
+                return true;
+            } 
+            return false;
+        }
+
+        function isPointInRect(x, y, rect) {
+            if (x > rect.l && x < rect.r && y > rect.t && y < rect.b) {
+                return true;
+            }
+            return false;
+        }
+
+        function destroyAfter(obj, delay) {
+            setTimeout(() => {
+                obj.destroy()
+            }, (delay < timeLeft ? delay : timeLeft - 0.01) * 1000);
+        }
     </script>
 </head>
 
@@ -180,6 +207,8 @@
         var SCORE_BONUS_BIG = 120;
 
         var keyListener = null;
+        var lastClickSpaceTime = -1;
+        var clickInterval = 200;
 
         var STAGE_BLOCK_BREAKER = "STAGE_BLOCK_BREAKER";
         var BALL_VX_MIN = 200;
@@ -220,7 +249,7 @@
         var STAGE_JUMP_ADVENTURE = "STAGE_JUMP_ADVENTURE";
 
         var STAGE_SHOOT_BALLOONS = "STAGE_SHOOT_BALLOONS";
-        var NEED_TO_SHOOT = 5;
+        var NEED_TO_SHOOT = 4;
         var AIM_MOVING_SPEED = 100.0;
         var GENERATE_BALLOON_INTERVAL_MIN = 0.15;
         var GENERATE_BALLOON_INTERVAL_MAX = 0.2;
@@ -237,13 +266,34 @@
         var BALLOON_SCALE_MIN = 0.8;
         var BALLOON_SCALE_MAX = 1.5;
 
+        var STAGE_GO_OVER_BRIDGE = "STAGE_GO_OVER_BRIDGE";
+        var CAR_SPEED_X = 200;
+        var CAR_SPEED_Y = 180;
+        var WIND_FORCE = 150;
+        var RIVER_RECT_1 = new Object();
+        RIVER_RECT_1.l = 96;
+        RIVER_RECT_1.t = 0;
+        RIVER_RECT_1.r = 480;
+        RIVER_RECT_1.b = 150;
+        var RIVER_RECT_2 = new Object();
+        RIVER_RECT_2.l = 96;
+        RIVER_RECT_2.t = 290;
+        RIVER_RECT_2.r = 480;
+        RIVER_RECT_2.b = 480;
+        var DESTINATION_RECT = new Object();
+        DESTINATION_RECT.l = 480;
+        DESTINATION_RECT.t = 150;
+        DESTINATION_RECT.r = 600;
+        DESTINATION_RECT.b = 300;
+
         var stages = new Array(
-            STAGE_ARROW_FOLLOW,
-            STAGE_ARROW_NOT_FOLLOW,
-            STAGE_BLOCK_BREAKER,
-            STAGE_JUMP_ADVENTURE,
-            STAGE_ROCKET_BREAKOUT,
-            STAGE_SHOOT_BALLOONS
+            // STAGE_ARROW_FOLLOW,
+            // STAGE_ARROW_NOT_FOLLOW,
+            // STAGE_BLOCK_BREAKER,
+            // STAGE_JUMP_ADVENTURE,
+            // STAGE_ROCKET_BREAKOUT,
+            //STAGE_SHOOT_BALLOONS,
+            STAGE_GO_OVER_BRIDGE,
             );
         var lastStageIndex = -1;
         var backgrounds = new Array("Background_White.png");
@@ -293,6 +343,9 @@
         var WHEEL_START_X = -400;
         var WHEEL_END_X = 1000;
         var WHEEL_TEXT_OFFSET_Y = 25;
+        if(navigator.userAgent.indexOf("Chrome") >= 0){
+            WHEEL_TEXT_OFFSET_Y = -15;
+        }
         var wheel = null;
         var wheelFill = null;
         var wheelText = null;
@@ -356,6 +409,14 @@
 
             step: function(dt) {
                 clampX(this.p);
+            }
+        });
+
+        Q.Sprite.extend("BalloonExplosion", {
+            init: function(p) {
+                this._super(p, {
+                    asset:          "Balloon_Explosion.png"
+                });
             }
         });
 
@@ -597,7 +658,7 @@
                 setTimeout(function() {
                     explode.destroy();
                 }, 
-                TIME_FULL - timeLeft > 1 ? 1000 : (TIME_FULL - timeLeft) * 1000 - 1);
+                timeLeft > 1 ? 1000 : timeLeft * 1000 - 1);
                 collision.obj.stop();
                 collision.obj.destroy();
             }); 
@@ -644,7 +705,7 @@
             }));
             rocket.add("tween, 2d");
             rocket.step = function(dt) {
-                if (Q.inputs["fire"]) {
+                if (isSpaceDown()) {
                     this.stop();
                     this.p.vx = ROCKET_VX;
                 }
@@ -733,7 +794,7 @@
             tyre.step = function(dt) {
                 this.p.angle += dt * 360 * 3;
                 stage.viewport.centerOn(tyre.p.x + 200, Q.height / 2);
-                if (tyre.p.isAlive == true && tyre.p.vy == 0 && Q.inputs["fire"]) {
+                if (tyre.p.isAlive == true && tyre.p.vy == 0 && isSpaceDown()) {
                     this.p.vy = -650;
                 }
             };
@@ -787,7 +848,7 @@
             }, (TIME_FULL - 0.5) * 1000);
             aim.step = function(dt){
                 movingXY(this, dt);
-                if (Q.inputs["fire"]) {
+                if (isSpaceDown()) {
                     var target = Q.stage(1).locate(this.p.x, this.p.y);
                     if (target && target.p.asset.match("Balloon_")) {
                         shotCount++;
@@ -798,6 +859,13 @@
                             appendScore(SCORE_BONUS_SMALL);
                         }
                         target.destroy();
+                        var explosion = stage.insert(new Q.BalloonExplosion({
+                            x:          this.p.x,
+                            y:          this.p.y
+                        }));
+                        setTimeout(() => {
+                            explosion.destroy();
+                        }, 500);
                     }
                 }
             };
@@ -821,7 +889,67 @@
                     balloon.add("2d");
                 }, t * 1000);
             }
+
             heartFlag = false;
+        });
+
+        Q.scene(STAGE_GO_OVER_BRIDGE, function(stage) {
+            heartFlag = false;
+            changeBackground("GoOverBridge_Map.png");
+            var car = stage.insert(new Q.Sprite({
+                x:              50,
+                y:              Q.height / 2,
+                asset:          "Car.png",
+                vx:             300,
+                vy:             250,
+                isAlive:        true,
+                isDone:         false,
+                collisionMask:  Q.SPRITE_NONE
+            }));
+            car.step = function(dt) {
+                if (this.p.isDone == true) {
+                    this.p.x += this.p.vx * dt;
+                    return;
+                }
+                if (this.p.isAlive == false) {
+                    return;
+                }
+                movingXY(this, dt);
+                if (isPointInRect(this.p.x, this.p.y, DESTINATION_RECT)) {
+                    this.p.isDone = true;
+                    heartFlag = true;
+                    return;
+                }
+                if (isPointInRect(this.p.x, this.p.y, RIVER_RECT_1) || isPointInRect(this.p.x, this.p.y, RIVER_RECT_2)) {
+                    var spray = stage.insert(new Q.Sprite({
+                        x:          this.p.x,
+                        y:          this.p.y,
+                        asset:      "Spray.png",
+                    }));
+                    destroyAfter(spray, 1);
+                    this.p.isAlive = false;
+                    this.p.y = 1000;
+                }
+            };
+            var windAngle = randomBetween(0, 360);
+            var wind = stage.insert(new Q.Sprite({
+                x:              50,
+                y:              Q.height / 2,
+                asset:          "Easy_Wind.png",
+                vx:             WIND_FORCE * Math.cos(windAngle / 180 * Math.PI),
+                vy:             WIND_FORCE * Math.sin(windAngle / 180 * Math.PI),
+                gravityY:       0,
+                angle:          windAngle,
+                collisionMask:  Q.SPRITE_NONE
+            }));
+            wind.step = function(dt) {
+                if (car.p.isDone == true || car.p.isAlive == false) {
+                    return;
+                }
+                car.p.x += wind.p.vx * dt;
+                car.p.y += wind.p.vy * dt;
+            };
+            wind.add("2d");
         });
 
         Q.scene(STAGE_UI, function(stage) {
@@ -1008,7 +1136,12 @@
             Balloon_Cyan.png,\
             Balloon_Pink.png,\
             Balloon_Yellow.png,\
-            Aim.png", function() {
+            Aim.png,\
+            Balloon_Explosion.png,\
+            GoOverBridge_Map.png,\
+            Car.png,\
+            Easy_Wind.png,\
+            Spray.png", function() {
                 Q.stageScene(STAGE_BACKGROUND);
                 Q.stageScene(STAGE_MAIN, 1);
                 //Q.debug = true;
