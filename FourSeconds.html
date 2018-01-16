@@ -46,9 +46,10 @@
 
         function resetGame() {
             Q.clearStages();
+            scoreCurrent = 0;
             uiStaged = false;
             isProgressBarActive = false;
-            progressBarTimeLeft = 0;
+            timeLeft = 0;
             isWheelActive = false;
             lifeLeft = MAX_HEART;
             Q.stageScene(STAGE_BACKGROUND);
@@ -109,7 +110,7 @@
 
         function resetProgressBarTime() {
             isProgressBarActive = true;
-            progressBarTimeLeft = TIME_FULL;
+            timeLeft = TIME_FULL;
         }
 
         function resetWheelTime() {
@@ -182,7 +183,9 @@
         var ROCKET_VX = 1500;
         var rocket = null;
 
-        var stages = new Array(STAGE_ROCKET_BREAKOUT);
+        var STAGE_JUMP_ADVENTURE = "STAGE_JUMP_ADVENTURE";
+
+        var stages = new Array(STAGE_JUMP_ADVENTURE);
         var backgrounds = new Array("Background_White.png");
 
         var STAGE_BACKGROUND = "STAGE_BACKGROUND";
@@ -212,7 +215,7 @@
         var PROGRESS_BAR_HEIGHT = 30;
         var isProgressBarActive = false;
         var TIME_FULL = 4.0;
-        var progressBarTimeLeft = 0;
+        var timeLeft = 0;
 
         var STAGE_MAIN = "STAGE_MAIN";
         var TITLE_X = -110;
@@ -358,6 +361,12 @@
         });
 
         Q.Sprite.extend("KeyListener", {
+            init: function(p) {
+                this._super(p);
+            }
+        });
+
+        Q.Sprite.extend("SceneManager", {
             init: function(p) {
                 this._super(p);
             }
@@ -528,7 +537,7 @@
                 setTimeout(function() {
                     explode.destroy();
                 }, 
-                TIME_FULL - progressBarTimeLeft > 1 ? 1000 : (TIME_FULL - progressBarTimeLeft) * 1000 - 1);
+                TIME_FULL - timeLeft > 1 ? 1000 : (TIME_FULL - timeLeft) * 1000 - 1);
                 collision.obj.stop();
                 collision.obj.destroy();
             }); 
@@ -540,6 +549,13 @@
                 asset:      "Easy_Wall.png"
             }));
             middle.on("hit", function(collision) {
+                if (timeLeft >= 3) {
+                    appendScore(SCORE_BONUS_BIG);
+                } else if (timeLeft >= 2) {
+                    appendScore(SCORE_BONUS_MEDIUM);
+                } else if (timeLeft >= 1) {
+                    appendScore(SCORE_BONUS_SMALL);
+                }
                 heartFlag = true;
             });
 
@@ -555,7 +571,7 @@
                 setTimeout(function() {
                     explode.destroy();
                 }, 
-                TIME_FULL - progressBarTimeLeft > 1 ? 1000 : (TIME_FULL - progressBarTimeLeft) * 1000);
+                TIME_FULL - timeLeft > 1 ? 1000 : (TIME_FULL - timeLeft) * 1000);
                 collision.obj.stop();
                 collision.obj.destroy();
             });
@@ -607,6 +623,92 @@
             });
 
             heartFlag = false;
+        });
+
+        Q.scene(STAGE_JUMP_ADVENTURE, function(stage) {
+            Q.sheet("Crates",
+                "Crates.png",
+                {
+                    "sx": 0,
+                    "sy": 0,
+                    "cols": 2,
+                    "tilew": 32,
+                    "tileh": 32,
+                    "frames": 2
+            });
+
+            stage.insert(new Q.Repeater({
+                asset:      "Background_Wall.png",
+                speedX:     0.5 
+            }));
+
+            stage.insert(new Q.Sprite({
+                asset:      "Background_Floor.png",
+                x:          400,
+                y:          420,
+            }));
+            stage.insert(new Q.Sprite({
+                asset:      "Background_Floor.png",
+                x:          1400,
+                y:          420,
+            }));
+            stage.insert(new Q.Sprite({
+                asset:      "Background_Floor.png",
+                x:          2400,
+                y:          420,
+            }));
+
+            var tyre = stage.insert(new Q.Sprite({
+                asset:      "Tyre.png",
+                x:          200,
+                y:          0,
+                vx:         400,
+                gravityY:   1500
+            }));
+            tyre.p.points = [];
+            for (var i = 0 ; i < 36 ; i++) {
+                tyre.p.points.push([tyre.p.w / 2 * Math.cos(i * 10), tyre.p.w / 2 * Math.sin(i * 10)]);
+            }
+            tyre.add("2d");
+            tyre.step = function(dt) {
+                this.p.angle += dt * 360 * 3;
+                stage.viewport.centerOn(tyre.p.x + 200, Q.height / 2);
+                if (tyre.p.isAlive == true && tyre.p.vy == 0 && Q.inputs["fire"]) {
+                    this.p.vy = -650;
+                }
+            };
+            tyre.p.isAlive = true;
+
+            for (var i = 0.5 ; i <= 3.5 ; i++) {
+                setTimeout(dt => {
+                    var box = stage.insert(new Q.Sprite({
+                        x:          tyre.p.x + Q.width + 50,
+                        y:          300,
+                        vx:         -200,
+                        gravityY:   0,
+                        sheet:      "Crates",
+                        frame:      Math.random() < 0.5 ? 0 : 1,
+                        scale:      1 + Math.random() * 1.5
+                    }));
+                    box.p.angleSpeed = 360 * (-3 + Math.random() * 6);
+                    box.add("2d");
+                    box.step = function(dt) {
+                        this.p.angle += dt * box.p.angleSpeed; 
+                    };
+                    box.on("hit", function(collision) {
+                        heartFlag = false;
+                        collision.obj.p.isAlive = false;
+                        collision.obj.p.opacity = 0;
+                        collision.obj.p.vx = 0;
+                    });
+                }, i * 1000);
+            }
+
+            heartFlag = true;
+
+            stage.add("viewport");
+
+            var manager = stage.insert(new Q.SceneManager());
         });
 
         Q.scene(STAGE_UI, function(stage) {
@@ -676,8 +778,8 @@
                     return;
                 }
 
-                progressBarTimeLeft -= dt;
-                if (progressBarTimeLeft <= 0) {
+                timeLeft -= dt;
+                if (timeLeft <= 0) {
                     if (heartFlag == true) {
                         appendScore(SCORE_PER_MISSION);
                     } else {
@@ -690,7 +792,7 @@
                     Q.clearStage(1);
                     WheelAnimIn();
                 }
-                this.updateValue(progressBarTimeLeft / TIME_FULL * 100);
+                this.updateValue(timeLeft / TIME_FULL * 100);
             };
 
             progressBar_Full.updateValue(0);
@@ -759,7 +861,7 @@
             background = stage.insert(new Q.Background({
                 asset:      "Background_Main.jpg"
             }));
-        })
+        });
 
         Q.load("\
             Bar.png,\
@@ -784,7 +886,11 @@
             Forbid.png,\
             Rocket.png,\
             Easy_Wall.png,\
-            Explode.png", function() {
+            Explode.png,\
+            Background_Wall.png,\
+            Background_Floor.png,\
+            Crates.png,\
+            Tyre.png", function() {
                 Q.stageScene(STAGE_BACKGROUND);
                 Q.stageScene(STAGE_MAIN, 1);
                 //Q.debug = true;
