@@ -69,9 +69,6 @@
         }
 
         function nextStage() {
-            if (typeof(aim) != "undefined") {
-                aim.destroy();
-            }   
             var index = Math.floor(Math.random() * stages.length);
             if (index == lastStageIndex) {
                 index = (index + 1) % stages.length;
@@ -175,7 +172,6 @@
                 return false;
             }
             if (Q.inputs["fire"]) {
-                console.log("asd");
                 lastClickSpaceTime = curTime;
                 return true;
             } 
@@ -194,6 +190,20 @@
                 obj.destroy()
             }, (delay < timeLeft ? delay : timeLeft - 0.01) * 1000);
         }
+
+        function fakeDestroy(obj) {
+            var p = obj.p;
+            p.y = 1000;
+            if (p.vx) {
+                p.vx = 0;
+            }
+            if (p.vy) {
+                p.vy = 0;
+            }
+            if (obj.stop) {
+                obj.stop();
+            }
+        } 
     </script>
 </head>
 
@@ -290,10 +300,10 @@
             // STAGE_ARROW_FOLLOW,
             // STAGE_ARROW_NOT_FOLLOW,
             // STAGE_BLOCK_BREAKER,
-            // STAGE_JUMP_ADVENTURE,
+            //STAGE_JUMP_ADVENTURE,
             // STAGE_ROCKET_BREAKOUT,
-            //STAGE_SHOOT_BALLOONS,
-            STAGE_GO_OVER_BRIDGE,
+            STAGE_SHOOT_BALLOONS,
+            //STAGE_GO_OVER_BRIDGE,
             );
         var lastStageIndex = -1;
         var backgrounds = new Array("Background_White.png");
@@ -788,7 +798,7 @@
             }));
             tyre.p.points = [];
             for (var i = 0 ; i < 36 ; i++) {
-                tyre.p.points.push([tyre.p.w / 2 * Math.cos(i * 10), tyre.p.w / 2 * Math.sin(i * 10)]);
+                tyre.p.points.push([tyre.p.w / 2 * Math.cos(i * 10 / 180 * Math.PI), tyre.p.w / 2 * Math.sin(i * 10 / 180 * Math.PI)]);
             }
             tyre.add("2d");
             tyre.step = function(dt) {
@@ -818,9 +828,7 @@
                     };
                     box.on("hit", function(collision) {
                         heartFlag = false;
-                        collision.obj.p.isAlive = false;
-                        collision.obj.p.y = 2000;
-                        collision.obj.p.vx = 0;
+                        fakeDestroy(collision.obj);
                         this.p.vx = 500;
                         this.p.vy = -300;
                     });
@@ -836,20 +844,20 @@
 
         Q.scene(STAGE_SHOOT_BALLOONS, function(stage) {
             shotCount = 0;
-            aim = Q.stage(2).insert(new Q.Sprite({
+            aim = stage.insert(new Q.Sprite({
                 x:              Q.width / 2,
                 y:              Q.height / 2,
                 vx:             600,
                 vy:             600,
                 asset:          "Aim.png",
+                type:           Q.SPRITE_NONE,
+                collisionMask:  Q.SPRITE_NONE,
             }));
-            setTimeout(() => {
-                aim.destroy();
-            }, (TIME_FULL - 0.5) * 1000);
             aim.step = function(dt){
                 movingXY(this, dt);
                 if (isSpaceDown()) {
-                    var target = Q.stage(1).locate(this.p.x, this.p.y);
+                    var target = Q.stage(1).locate(this.p.x, this.p.y, Q.SPRITE_ACTIVE);
+                    console.log(target);
                     if (target && target.p.asset.match("Balloon_")) {
                         shotCount++;
                         if (shotCount >= NEED_TO_SHOOT) {
@@ -861,11 +869,11 @@
                         target.destroy();
                         var explosion = stage.insert(new Q.BalloonExplosion({
                             x:          this.p.x,
-                            y:          this.p.y
+                            y:          this.p.y,
                         }));
                         setTimeout(() => {
                             explosion.destroy();
-                        }, 500);
+                        }, 50);
                     }
                 }
             };
@@ -884,6 +892,7 @@
                         vy:             randomBetween(BALLOON_SPEED_Y_MIN, BALLOON_SPEED_Y_MAX),
                         gravityY:       0,
                         scale:          randomBetween(BALLOON_SCALE_MIN, BALLOON_SCALE_MAX),
+                        type:           Q.SPRITE_ACTIVE,
                         collisionMask:  Q.SPRITE_NONE
                     }));
                     balloon.add("2d");
@@ -904,7 +913,8 @@
                 vy:             250,
                 isAlive:        true,
                 isDone:         false,
-                collisionMask:  Q.SPRITE_NONE
+                type:           Q.SPRITE_ACTIVE,
+                collisionMask:  Q.SPRITE_ACTIVE
             }));
             car.step = function(dt) {
                 if (this.p.isDone == true) {
@@ -940,6 +950,7 @@
                 vy:             WIND_FORCE * Math.sin(windAngle / 180 * Math.PI),
                 gravityY:       0,
                 angle:          windAngle,
+                type:           Q.SPRITE_NONE,
                 collisionMask:  Q.SPRITE_NONE
             }));
             wind.step = function(dt) {
@@ -950,6 +961,40 @@
                 car.p.y += wind.p.vy * dt;
             };
             wind.add("2d");
+
+            for (var i = 0 ; i < 3 ; i++) {
+                setTimeout(() => {
+                    var enemy = stage.insert(new Q.Sprite({
+                        x:              600,
+                        y:              randomBetween(180, 320),
+                        asset:          "Car_Enemy.png",
+                        type:           Q.SPRITE_ACTIVE,
+                        collisionMask:  Q.SPRITE_ACTIVE,
+                        vx:             -randomBetween(200, 400),
+                        vy:             0,
+                        gravityY:       0
+                    }));
+                    enemy.add("2d");
+                    enemy.on("hit", function(collision) {
+                        var p = collision.obj.p;
+                        if (p.asset != "Car.png") {
+                            return;
+                        }
+                        var explosion = stage.insert(new Q.Sprite({
+                            x:              (p.x + this.p.x) / 2,
+                            y:              (p.y + this.p.y) / 2,
+                            asset:          "Balloon_Explosion.png",
+                            type:           Q.SPRITE_NONE,
+                            collisionMask:  Q.SPRITE_NONE
+                        }));
+                        destroyAfter(explosion, 1);
+                        enemy.destroy();
+                        if (p.isDone == false) {
+                            fakeDestroy(collision.obj);
+                        }
+                    })
+                }, randomBetween(i, i + 1) * 1000);
+            }
         });
 
         Q.scene(STAGE_UI, function(stage) {
@@ -1141,10 +1186,11 @@
             GoOverBridge_Map.png,\
             Car.png,\
             Easy_Wind.png,\
-            Spray.png", function() {
+            Spray.png,\
+            Car_Enemy.png", function() {
                 Q.stageScene(STAGE_BACKGROUND);
                 Q.stageScene(STAGE_MAIN, 1);
-                //Q.debug = true;
+                Q.debug = true;
                 //Q.debugFill = true;
         });
     </script>
