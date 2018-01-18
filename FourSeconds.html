@@ -55,6 +55,8 @@
             lifeLeft = MAX_HEART;
             Q.stageScene(STAGE_BACKGROUND);
             Q.stageScene(STAGE_MAIN, 1);
+            initializeSequence();
+            curSequenceIndex = 0;
         }
 
         function changeBackground(bg) {
@@ -69,24 +71,27 @@
         }
 
         function nextStage() {
-            var index = Math.floor(Math.random() * stages.length);
-            if (index == lastStageIndex) {
-                index = (index + 1) % stages.length;
+            if (!nextStageFlag) {
+                return;
             }
-            lastStageIndex = index;
+            nextStageFlag = false;
             changeBackground(backgrounds[0]);
             resetProgressBarTime();
-            Q.stageScene(stages[index], 1);
-            tintIn(stageInfos[index]);
-            tintForResultShown = false;
-            var wheelComponents = new Array(wheel, wheelFill, wheelText);
-            for (var i = 0 ; i < wheelComponents.length ; i++) {
-                wheelComponents[i].p.x = WHEEL_START_X;
+            Q.stageScene(stages[stageSequence[curSequenceIndex]], 1);
+            tintIn(stageInfos[stageSequence[curSequenceIndex]]);
+            if (++curSequenceIndex >= stageSequence.length) {
+                initializeSequence();
+                curSequenceIndex = 0;
             }
-            wheelFill.p.angle = 0;
+            tintForResultShown = false;
         }
 
         function WheelAnimIn() {
+            wheel.p.x = WHEEL_START_X;
+            wheelFill.p.x = WHEEL_START_X;
+            wheelText.p.x = WHEEL_START_X;
+            wheelFill.p.angle = 0;
+            nextStageFlag = true;
             changeBackground(backgrounds[0]);
             var wheelComponents = new Array(wheel, wheelFill, wheelText);
             resetWheelTime();
@@ -127,6 +132,10 @@
 
         function randomBetween(min, max) {
             return min + Math.random() * (max - min);
+        }
+
+        function randomIntBetween(min, max) {
+            return Math.floor(randomBetween(min, max));
         }
 
         function randomNextToFollow() {
@@ -216,6 +225,8 @@
         }
 
         function tintIn(str) {
+            tintBackground.stop();
+            tintText.stop();
             tintBackground.animate({
                 opacity:        1,
             },
@@ -268,6 +279,22 @@
             }
             tintForResultShown = true;
             heartFlag = false;
+        }
+
+        function initializeSequence(sequence) {
+            stageSequence = new Array(stages.length);
+            for (var i = 0 ; i < stages.length ; i++) {
+                stageSequence[i] = i;
+            }
+
+            var k = stageSequence.length * 5;
+            while (k--) {
+                var one = randomIntBetween(0, stageSequence.length);
+                var another = randomIntBetween(0, stageSequence.length);
+                var temp = stageSequence[one];
+                stageSequence[one] = stageSequence[another];
+                stageSequence[another] = temp;
+            }
         }
     </script>
 </head>
@@ -379,11 +406,14 @@
             STAGE_FAST_CALCULATION,
             STAGE_SEARCHING_TREASURE,
         );
-        var lastStageIndex = -1;
+        var stageSequence = null;
+        initializeSequence();
+        var curSequenceIndex = 0;
+        var nextStageFlag = true;
         var backgrounds = new Array("Background_White.png");
         var stageInfos = new Array(
             "Follow!",
-            "Don't touch!",
+            "Don't Touch!",
             "Defend!",
             "Avoid!",
             "Break Out!",
